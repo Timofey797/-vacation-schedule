@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👁️ График отпусков - Только просмотр</title>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: none; width: 100%; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; }
+        .header { background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%); color: white; padding: 30px; text-align: center; }
+        .header h1 { font-size: 2.2em; margin-bottom: 10px; }
+        .controls { display: flex; justify-content: center; gap: 15px; padding: 25px; background: #f8f9fa; border-bottom: 2px solid #e9ecef; flex-wrap: wrap; }
+        .view-controls { display: flex; justify-content: center; padding: 15px; background: #e9ecef; border-bottom: 1px solid #dee2e6; }
+        .view-toggle { display: flex; background: white; border-radius: 25px; padding: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .view-btn { padding: 10px 20px; border: none; border-radius: 20px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; background: transparent; color: #6c757d; }
+        .view-btn.active { background: linear-gradient(135deg, #007bff, #0056b3); color: white; box-shadow: 0 2px 8px rgba(0,123,255,0.3); }
+        .view-btn:hover:not(.active) { background: #f8f9fa; color: #495057; }
+        .btn { padding: 12px 20px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 8px; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .btn-vacation { background: linear-gradient(135deg, #ff6b6b, #ff8e8e); color: white; }
+        .btn-business { background: linear-gradient(135deg, #4ecdc4, #44a08d); color: white; }
+        .btn-sick { background: linear-gradient(135deg, #a8e6cf, #88d8a3); color: white; }
+        .btn-delete { background: linear-gradient(135deg, #dc3545, #c82333); color: white; }
+        .btn-export { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+        .main-content { padding: 30px; overflow-x: auto; }
+        .legend { margin-bottom: 25px; padding: 20px; background: #f8f9fa; border-radius: 10px; display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-color { width: 20px; height: 20px; border-radius: 4px; }
+        .vacation-color { background: linear-gradient(45deg, #ff6b6b, #ff8e8e); }
+        .business-color { background: linear-gradient(45deg, #4ecdc4, #44a08d); }
+        .sick-color { background: linear-gradient(45deg, #a8e6cf, #88d8a3); }
+        .gantt-container { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow-x: auto; min-width: 2000px; width: 100%; }
+        .timeline-header { display: grid; grid-template-columns: 300px 1fr; margin-bottom: 20px; font-weight: bold; color: #2c3e50; }
+        .days-row { display: grid; grid-template-columns: repeat(31, minmax(40px, 1fr)); gap: 1px; text-align: center; }
+        .months-row { display: grid; grid-template-columns: repeat(12, minmax(120px, 1fr)); gap: 3px; text-align: center; }
+        .day-header, .month-header { background: #e9ecef; padding: 8px 4px; border-radius: 3px; font-size: 11px; font-weight: bold; border: 1px solid #dee2e6; }
+        .day-header.weekend { background: #ffebee; color: #c62828; }
+        .day-header.today { background: #e3f2fd; color: #1976d2; font-weight: bold; }
+        .employee-row { display: grid; grid-template-columns: 300px 1fr; align-items: center; margin-bottom: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; transition: all 0.3s ease; }
+        .employee-row:hover { background: #e9ecef; transform: translateX(3px); }
+        .employee-name { font-weight: bold; color: #2c3e50; padding-right: 20px; font-size: 15px; }
+        .timeline { position: relative; height: 50px; background: #e9ecef; border-radius: 8px; display: grid; gap: 1px; overflow: visible; }
+        .timeline.days-view { grid-template-columns: repeat(31, minmax(40px, 1fr)); }
+        .timeline.months-view { grid-template-columns: repeat(12, minmax(120px, 1fr)); }
+        .day-section, .month-section { position: relative; background: #f8f9fa; border-radius: 2px; border: 1px solid #dee2e6; }
+        .day-section.weekend { background: #fff3e0; }
+        .day-section.today { background: #e8f5e8; border-color: #4caf50; }
+        .absence-bar { position: absolute; height: 35px; top: 7.5px; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px; font-weight: bold; cursor: pointer; transition: all 0.3s ease; z-index: 10; box-shadow: 0 2px 5px rgba(0,0,0,0.2); min-width: 40px; }
+        .absence-bar:hover { transform: scale(1.05); box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 30; }
+        .absence-bar .delete-btn { position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; cursor: pointer; display: none; z-index: 40; }
+        .absence-bar:hover .delete-btn { display: block; }
+        .vacation-bar { background: linear-gradient(45deg, #ff6b6b, #ff8e8e); }
+        .business-bar { background: linear-gradient(45deg, #4ecdc4, #44a08d); }
+        .sick-bar { background: linear-gradient(45deg, #a8e6cf, #88d8a3); }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: white; margin: 5% auto; padding: 30px; border-radius: 15px; width: 90%; max-width: 500px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
+        .close:hover { color: #000; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #2c3e50; }
+        .form-group input, .form-group select { width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 14px; transition: border-color 0.3s ease; }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.1); }
+        .form-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 25px; }
+        .btn-primary { background: linear-gradient(135deg, #007bff, #0056b3); color: white; }
+        .btn-secondary { background: linear-gradient(135deg, #6c757d, #495057); color: white; }
+        .btn-sync { background: linear-gradient(135deg, #28a745, #20c997); color: white; }
+        .btn-sync:hover { background: linear-gradient(135deg, #20c997, #17a2b8); }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 25px; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; }
+        .stat-number { font-size: 2em; font-weight: bold; margin-bottom: 5px; }
+        .upcoming-absences { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 20px; margin-bottom: 25px; }
+        .upcoming-absences h3 { color: #856404; margin-bottom: 15px; }
+        .upcoming-list { display: grid; gap: 10px; }
+        .upcoming-item { background: white; padding: 10px; border-radius: 5px; border-left: 4px solid #ff6b6b; }
+        .upcoming-item.business { border-left-color: #4ecdc4; }
+        .upcoming-item.sick { border-left-color: #a8e6cf; }
+        .edit-only { display: none; }
+        .error-message { color: #dc3545; font-size: 12px; margin-top: 5px; display: none; }
+        .save-notification { position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 10px 20px; border-radius: 5px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+        @media (max-width: 768px) { .gantt-container { padding: 15px; } .timeline-header, .employee-row { grid-template-columns: 200px 1fr; } .employee-name { font-size: 12px; padding-right: 10px; } .days-row, .timeline.days-view { grid-template-columns: repeat(31, minmax(30px, 1fr)); } .months-row, .timeline.months-view { grid-template-columns: repeat(12, minmax(80px, 1fr)); } .day-header { font-size: 9px; padding: 6px 2px; } .month-header { font-size: 10px; padding: 8px 4px; } .controls { padding: 15px; gap: 10px; } .btn { padding: 10px 15px; font-size: 12px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👁️ График отпусков - Только просмотр</h1>
+            <p>Публичная версия для сотрудников</p>
+        </div>
+
+        <div class="controls" style="display: none;">
+            <!-- Кнопки редактирования скрыты для режима просмотра -->
+        </div>
+
+        <div style="text-align: center; padding: 15px; background: #e3f2fd; border: 1px solid #bbdefb; margin: 10px 0; border-radius: 5px;">
+            📖 Режим только просмотра - Редактирование недоступно
+        </div>
+
+        <div class="sync-status" id="sync-status" style="text-align: center; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7; margin: 10px 0; border-radius: 5px;">
+            🔄 Подключение к Google Sheets...
+        </div>
+
+        <div class="view-controls">
+            <div class="view-toggle">
+                <button class="view-btn active" onclick="switchView('days')" id="days-view-btn">📅 По дням</button>
+                <button class="view-btn" onclick="switchView('months')" id="months-view-btn">📊 По месяцам</button>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="upcoming-absences">
+                <h3>📅 Ближайшие отсутствия</h3>
+                <div id="upcoming-list" class="upcoming-list"></div>
+            </div>
+
+            <!-- Навигация по месяцам (только для режима "По дням") -->
+            <div id="month-navigation" style="display: none; text-align: center; padding: 15px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; margin: 15px 0;">
+                <button onclick="changeMonth(-1)" style="background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-right: 10px; cursor: pointer;">←</button>
+                <span id="current-month-display" style="font-weight: bold; font-size: 16px; margin: 0 20px;">Сентябрь 2025</span>
+                <button onclick="changeMonth(1)" style="background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 5px; margin-left: 10px; cursor: pointer;">→</button>
+            </div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color vacation-color"></div>
+                    <span>Отпуска</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color business-color"></div>
+                    <span>Командировки</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color sick-color"></div>
+                    <span>Больничные</span>
+                </div>
+            </div>
+
+            <div class="gantt-container">
+                <div class="timeline-header">
+                    <div>Сотрудник</div>
+                    <div class="days-row" id="timeline-header"></div>
+                </div>
+
+                <div id="employees-container">
+                    <!-- Сотрудники будут добавлены динамически -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title">Добавить отсутствие</h2>
+            
+            <form id="absence-form">
+                <div class="form-group">
+                    <label>Сотрудник:</label>
+                    <select id="employee" required>
+                        <option value="">Выберите сотрудника</option>
+                        <option value="Глушков Александр">Глушков Александр</option>
+                        <option value="Лихтенвальд Эдуард">Лихтенвальд Эдуард</option>
+                        <option value="Шайхутдинов Ринат">Шайхутдинов Ринат</option>
+                        <option value="Варжинский Павел">Варжинский Павел</option>
+                    </select>
+                </div>
+
+                <div class="form-group edit-only" id="type-select-group">
+                    <label>Тип отсутствия:</label>
+                    <select id="absence-type">
+                        <option value="vacation">Отпуск</option>
+                        <option value="business">Командировка</option>
+                        <option value="sick">Больничный</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Дата начала:</label>
+                    <input type="date" id="start-date" required min="2025-01-01" max="2025-12-31">
+                    <div class="error-message" id="start-date-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Дата окончания:</label>
+                    <input type="date" id="end-date" required min="2025-01-01" max="2025-12-31">
+                    <div class="error-message" id="end-date-error"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Комментарий:</label>
+                    <input type="text" id="comment" placeholder="Дополнительная информация">
+                </div>
+
+                <div class="form-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно удаления -->
+    <div id="delete-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDeleteModal()">&times;</span>
+            <h2>🗑️ Удалить отсутствие</h2>
+            
+            <div class="form-group">
+                <label>Выберите отсутствие для удаления:</label>
+                <select id="delete-absence-select">
+                    <option value="">Выберите отсутствие...</option>
+                </select>
+            </div>
+
+            <div class="form-buttons">
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">Отмена</button>
+                <button type="button" class="btn btn-delete" onclick="deleteAbsence()">Удалить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления сотрудника -->
+    <div id="add-employee-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddEmployeeModal()">&times;</span>
+            <h2>👥 Добавить сотрудника</h2>
+            
+            <form id="add-employee-form">
+                <div class="form-group">
+                    <label>ФИО сотрудника:</label>
+                    <input type="text" id="new-employee-name" required placeholder="Введите ФИО сотрудника">
+                    <div class="error-message" id="employee-name-error"></div>
+                </div>
+
+                <div class="form-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="closeAddEmployeeModal()">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let currentAbsenceType = '';
+        let absences = [];
+        let editingId = null;
+        let currentView = 'days';
+        let currentMonth = 9;
+        let employees = ['Глушков Александр', 'Лихтенвальд Эдуард', 'Шайхутдинов Ринат', 'Варжинский Павел'];
+
+        // Функции сохранения и загрузки данных
+        function saveData() {
+            localStorage.setItem('vacationScheduleData', JSON.stringify(absences));
+            showSaveNotification();
+            
+            // Также сохраняем в Google Sheets, если авторизованы
+            if (gapiInitialized && gapi.client.getToken()) {
+                saveDataToSheets();
+            }
+        }
+
+        function loadData() {
+            const savedData = localStorage.getItem('vacationScheduleData');
+            if (savedData) {
+                try {
+                    absences = JSON.parse(savedData);
+                    return true;
+                } catch (error) {
+                    console.error('Ошибка при загрузке данных:', error);
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        function showSaveNotification() {
+            const notification = document.createElement('div');
+            notification.className = 'save-notification';
+            notification.textContent = '💾 Данные сохранены';
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(absences, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'vacation_schedule_data.json';
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        
+                        // Валидация данных
+                        if (!Array.isArray(importedData)) {
+                            alert('Ошибка: Файл должен содержать массив данных');
+                            return;
+                        }
+                        
+                        // Проверка структуры данных
+                        const isValid = importedData.every(item => 
+                            item.employee && item.startDate && item.endDate && item.type
+                        );
+                        
+                        if (!isValid) {
+                            alert('Ошибка: Неверный формат данных в файле');
+                            return;
+                        }
+                        
+                        if (confirm(`Импортировать ${importedData.length} записей? Текущие данные будут заменены.`)) {
+                            absences = importedData;
+                            renderAbsences();
+                            updateStats();
+                            updateUpcomingAbsences();
+                            saveData();
+                            alert('Данные успешно импортированы!');
+                        }
+                    } catch (error) {
+                        alert('Ошибка при чтении файла: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function clearAllData() {
+            if (confirm('Вы уверены, что хотите удалить ВСЕ данные? Это действие нельзя отменить!')) {
+                if (confirm('Это удалит все отсутствия. Продолжить?')) {
+                    absences = [];
+                    renderAbsences();
+                    updateStats();
+                    updateUpcomingAbsences();
+                    saveData();
+                    alert('Все данные удалены!');
+                }
+            }
+        }
+
+        function showAddEmployeeModal() {
+            document.getElementById('add-employee-modal').style.display = 'block';
+            document.getElementById('new-employee-name').value = '';
+            hideErrors();
+        }
+
+        function closeAddEmployeeModal() {
+            document.getElementById('add-employee-modal').style.display = 'none';
+            hideErrors();
+        }
+
+        function addEmployee() {
+            const name = document.getElementById('new-employee-name').value.trim();
+            
+            if (!name) {
+                showError('employee-name-error', 'Введите ФИО сотрудника');
+                return;
+            }
+            
+            if (employees.includes(name)) {
+                showError('employee-name-error', 'Сотрудник с таким именем уже существует');
+                return;
+            }
+            
+            employees.push(name);
+            updateEmployeeSelects();
+            updateEmployeesContainer();
+            closeAddEmployeeModal();
+            alert(`Сотрудник "${name}" успешно добавлен!`);
+        }
+
+        function updateEmployeeSelects() {
+            const selects = document.querySelectorAll('#employee, #delete-absence-select');
+            selects.forEach(select => {
+                if (select.id === 'employee') {
+                    const currentValue = select.value;
+                    select.innerHTML = '<option value="">Выберите сотрудника</option>';
+                    employees.forEach(employee => {
+                        const option = document.createElement('option');
+                        option.value = employee;
+                        option.textContent = employee;
+                        if (employee === currentValue) {
+                            option.selected = true;
+                        }
+                        select.appendChild(option);
+                    });
+                }
+            });
+        }
+
+        function updateEmployeesContainer() {
+            const container = document.getElementById('employees-container');
+            container.innerHTML = '';
+            
+            employees.forEach(employee => {
+                const row = document.createElement('div');
+                row.className = 'employee-row';
+                row.innerHTML = `
+                    <div class="employee-name">${employee}</div>
+                    <div class="timeline ${currentView}-view" data-employee="${employee}"></div>
+                `;
+                container.appendChild(row);
+            });
+            
+            updateTimelines();
+            renderAbsences();
+        }
+
+        function switchView(view) {
+            currentView = view;
+            document.getElementById('days-view-btn').classList.toggle('active', view === 'days');
+            document.getElementById('months-view-btn').classList.toggle('active', view === 'months');
+            // Показываем/скрываем навигацию по месяцам
+            const monthNav = document.getElementById('month-navigation');
+            if (monthNav) {
+                monthNav.style.display = view === 'days' ? 'block' : 'none';
+                if (view === 'days') updateMonthNavigation();
+            }
+            updateTimelineHeader();
+            updateTimelines();
+            renderAbsences();
+        }
+
+        // Функции навигации по месяцам
+        function changeMonth(direction) {
+            currentMonth += direction;
+            if (currentMonth < 1) currentMonth = 12;
+            if (currentMonth > 12) currentMonth = 1;
+            updateMonthNavigation();
+            updateTimelineHeader();
+            updateTimelines();
+            renderAbsences();
+        }
+
+        function updateMonthNavigation() {
+            const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+            const el = document.getElementById('current-month-display');
+            if (el) el.textContent = `${monthNames[currentMonth - 1]} 2025`;
+        }
+
+        function updateTimelineHeader() {
+            const header = document.getElementById('timeline-header');
+            header.innerHTML = '';
+            
+            if (currentView === 'days') {
+                header.className = 'days-row';
+                // Кол-во дней в выбранном месяце
+                const daysInMonth = new Date(2025, currentMonth, 0).getDate();
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dayElement = document.createElement('div');
+                    dayElement.className = 'day-header';
+                    dayElement.textContent = day;
+                    
+                    const date = new Date(2025, currentMonth - 1, day);
+                    const dayOfWeek = date.getDay();
+                    if (dayOfWeek === 0 || dayOfWeek === 6) {
+                        dayElement.classList.add('weekend');
+                    }
+                    
+                    const today = new Date();
+                    if (today.getDate() === day && today.getMonth() === currentMonth - 1 && today.getFullYear() === 2025) {
+                        dayElement.classList.add('today');
+                    }
+                    
+                    header.appendChild(dayElement);
+                }
+                // Сетка на точное число дней месяца
+                header.style.gridTemplateColumns = `repeat(${daysInMonth}, minmax(40px, 1fr))`;
+            } else {
+                header.className = 'months-row';
+                const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 
+                              'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+                
+                months.forEach(month => {
+                    const monthElement = document.createElement('div');
+                    monthElement.className = 'month-header';
+                    monthElement.textContent = month;
+                    header.appendChild(monthElement);
+                });
+                // Зафиксируем 12 равных колонок для годового вида
+                header.style.gridTemplateColumns = 'repeat(12, minmax(100px, 1fr))';
+            }
+        }
+
+        function updateTimelines() {
+            employees.forEach(employee => {
+                const timeline = document.querySelector(`[data-employee="${employee}"]`);
+                timeline.innerHTML = '';
+                timeline.className = `timeline ${currentView}-view`;
+                
+                if (currentView === 'days') {
+                    const daysInMonth = new Date(2025, currentMonth, 0).getDate();
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const dayElement = document.createElement('div');
+                        dayElement.className = 'day-section';
+                        dayElement.setAttribute('data-day', day);
+                        
+                        const date = new Date(2025, currentMonth - 1, day);
+                        const dayOfWeek = date.getDay();
+                        if (dayOfWeek === 0 || dayOfWeek === 6) {
+                            dayElement.classList.add('weekend');
+                        }
+                        
+                        const today = new Date();
+                        if (today.getDate() === day && today.getMonth() === currentMonth - 1 && today.getFullYear() === 2025) {
+                            dayElement.classList.add('today');
+                        }
+                        
+                        timeline.appendChild(dayElement);
+                    }
+                    // Сетка на точное число дней месяца
+                    timeline.style.gridTemplateColumns = `repeat(${daysInMonth}, minmax(40px, 1fr))`;
+                } else {
+                    for (let month = 1; month <= 12; month++) {
+                        const monthElement = document.createElement('div');
+                        monthElement.className = 'month-section';
+                        monthElement.setAttribute('data-month', month);
+                        timeline.appendChild(monthElement);
+                    }
+                    // 12 равных колонок, чтобы ничего не сжималось
+                    timeline.style.gridTemplateColumns = 'repeat(12, minmax(100px, 1fr))';
+                }
+            });
+        }
+
+        function showModal(type) {
+            currentAbsenceType = type;
+            const modal = document.getElementById('modal');
+            const title = document.getElementById('modal-title');
+            const typeSelectGroup = document.getElementById('type-select-group');
+            
+            const titles = {
+                vacation: '🏖️ Добавить отпуск',
+                business: '✈️ Добавить командировку',
+                sick: '🏥 Добавить больничный'
+            };
+            
+            title.textContent = titles[type];
+            typeSelectGroup.style.display = 'none';
+            modal.style.display = 'block';
+            
+            document.getElementById('absence-form').reset();
+            editingId = null;
+            hideErrors();
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            hideErrors();
+        }
+
+        function showDeleteModal() {
+            const modal = document.getElementById('delete-modal');
+            const select = document.getElementById('delete-absence-select');
+            
+            select.innerHTML = '<option value="">Выберите отсутствие...</option>';
+            
+            absences.forEach(absence => {
+                const option = document.createElement('option');
+                option.value = absence.id;
+                option.textContent = `${absence.employee} - ${getTypeName(absence.type)} (${absence.startDate} - ${absence.endDate})`;
+                select.appendChild(option);
+            });
+            
+            modal.style.display = 'block';
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').style.display = 'none';
+        }
+
+        function deleteAbsence() {
+            const select = document.getElementById('delete-absence-select');
+            const absenceId = parseInt(select.value);
+            
+            if (!absenceId) {
+                alert('Выберите отсутствие для удаления!');
+                return;
+            }
+            
+            if (confirm('Вы уверены, что хотите удалить это отсутствие?')) {
+                absences = absences.filter(a => a.id !== absenceId);
+                renderAbsences();
+                updateStats();
+                updateUpcomingAbsences();
+                saveData();
+                closeDeleteModal();
+            }
+        }
+
+        function getTypeName(type) {
+            const names = {
+                vacation: 'Отпуск',
+                business: 'Командировка',
+                sick: 'Больничный'
+            };
+            return names[type] || type;
+        }
+
+        function hideErrors() {
+            document.querySelectorAll('.error-message').forEach(error => {
+                error.style.display = 'none';
+            });
+        }
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+
+        // Обработчик формы добавления сотрудника
+        document.getElementById('add-employee-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            addEmployee();
+        });
+
+        // Обработчик формы
+        document.getElementById('absence-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const employee = document.getElementById('employee').value;
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+            const comment = document.getElementById('comment').value;
+            
+            let absenceType = currentAbsenceType;
+            if (editingId) {
+                absenceType = document.getElementById('absence-type').value;
+            }
+
+            hideErrors();
+            let hasErrors = false;
+
+            if (!employee) {
+                showError('employee-error', 'Выберите сотрудника');
+                hasErrors = true;
+            }
+
+            if (!startDate) {
+                showError('start-date-error', 'Укажите дату начала');
+                hasErrors = true;
+            }
+
+            if (!endDate) {
+                showError('end-date-error', 'Укажите дату окончания');
+                hasErrors = true;
+            }
+
+            if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+                showError('end-date-error', 'Дата начала не может быть позже даты окончания');
+                hasErrors = true;
+            }
+
+            if (startDate && new Date(startDate).getFullYear() !== 2025) {
+                showError('start-date-error', 'Дата должна быть в 2025 году');
+                hasErrors = true;
+            }
+
+            if (endDate && new Date(endDate).getFullYear() !== 2025) {
+                showError('end-date-error', 'Дата должна быть в 2025 году');
+                hasErrors = true;
+            }
+
+            if (hasErrors) {
+                return;
+            }
+
+            const absence = {
+                id: editingId || Date.now(),
+                employee,
+                startDate,
+                endDate,
+                type: absenceType,
+                comment
+            };
+
+            if (editingId) {
+                const index = absences.findIndex(a => a.id === editingId);
+                absences[index] = absence;
+            } else {
+                absences.push(absence);
+            }
+
+            renderAbsences();
+            updateStats();
+            updateUpcomingAbsences();
+            saveData();
+            closeModal();
+        });
+
+        function renderAbsences() {
+            document.querySelectorAll('.absence-bar').forEach(bar => bar.remove());
+
+            const monthStart = new Date(2025, currentMonth - 1, 1);
+            const monthEnd = new Date(2025, currentMonth, 0);
+
+            absences.forEach(absence => {
+                const timeline = document.querySelector(`[data-employee="${absence.employee}"]`);
+                if (!timeline) return;
+
+                // В дневном режиме показываем только записи, пересекающиеся с текущим месяцем
+                if (currentView === 'days') {
+                    const start = new Date(absence.startDate);
+                    const end = new Date(absence.endDate);
+                    const intersects = !(end < monthStart || start > monthEnd);
+                    if (!intersects) return;
+                }
+
+                const bar = createAbsenceBar(absence);
+                timeline.appendChild(bar);
+            });
+        }
+
+        function createAbsenceBar(absence) {
+            const bar = document.createElement('div');
+            bar.className = `absence-bar ${absence.type}-bar`;
+            bar.setAttribute('data-id', absence.id);
+            
+            const position = calculatePosition(absence.startDate, absence.endDate);
+            bar.style.left = position.left;
+            bar.style.width = position.width;
+            
+            const startDate = new Date(absence.startDate);
+            const endDate = new Date(absence.endDate);
+            
+            if (currentView === 'days') {
+                const startDay = startDate.getDate();
+                const endDay = endDate.getDate();
+                const month = startDate.getMonth() + 1;
+                bar.textContent = `${startDay}-${endDay}.${month < 10 ? '0' + month : month}`;
+            } else {
+                const startMonth = startDate.getMonth() + 1;
+                const endMonth = endDate.getMonth() + 1;
+                bar.textContent = `${startMonth}.${endMonth}`;
+            }
+            
+            const typeNames = {
+                vacation: 'Отпуск',
+                business: 'Командировка',
+                sick: 'Больничный'
+            };
+            
+            bar.title = `${typeNames[absence.type]}: ${absence.startDate} - ${absence.endDate}${absence.comment ? '\n' + absence.comment : ''}`;
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.innerHTML = '×';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (confirm(`Удалить ${typeNames[absence.type].toLowerCase()} для ${absence.employee}?`)) {
+                    absences = absences.filter(a => a.id !== absence.id);
+                    renderAbsences();
+                    updateStats();
+                    updateUpcomingAbsences();
+                    saveData();
+                }
+            };
+            bar.appendChild(deleteBtn);
+            
+            bar.onclick = () => editAbsence(absence.id);
+            
+            return bar;
+        }
+
+        function calculatePosition(startDate, endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            if (currentView === 'days') {
+                // Ограничиваем интервал текущим месяцем
+                const monthStart = new Date(2025, currentMonth - 1, 1);
+                const monthEnd = new Date(2025, currentMonth, 0);
+                const daysInMonth = monthEnd.getDate();
+
+                const displayStart = start < monthStart ? monthStart : start;
+                const displayEnd = end > monthEnd ? monthEnd : end;
+
+                const startDay = displayStart.getDate();
+                const endDay = displayEnd.getDate();
+
+                const dayWidth = 100 / daysInMonth;
+                const leftPercent = (startDay - 1) * dayWidth;
+                const widthPercent = (endDay - startDay + 1) * dayWidth;
+
+                return {
+                    left: `${Math.max(0, leftPercent)}%`,
+                    width: `${Math.max(3, Math.min(100 - leftPercent, widthPercent))}%`
+                };
+            } else {
+                // Годовой вид: доли месяцев + целые месяцы между
+                const startMonth = start.getMonth();
+                const endMonth = end.getMonth();
+                const startDay = start.getDate();
+                const endDay = end.getDate();
+
+                const monthWidth = 100 / 12;
+
+                let leftPercent = 0;
+                let widthPercent = 0;
+
+                if (startMonth === endMonth) {
+                    const daysInMonth = new Date(start.getFullYear(), startMonth + 1, 0).getDate();
+                    const startFrac = (startDay - 1) / daysInMonth;
+                    const endFrac = endDay / daysInMonth;
+                    leftPercent = startMonth * monthWidth + startFrac * monthWidth;
+                    widthPercent = Math.max(0, (endFrac - startFrac) * monthWidth);
+                } else {
+                    const startDaysInMonth = new Date(start.getFullYear(), startMonth + 1, 0).getDate();
+                    const endDaysInMonth = new Date(end.getFullYear(), endMonth + 1, 0).getDate();
+                    const startFrac = (startDay - 1) / startDaysInMonth;
+                    const endFrac = endDay / endDaysInMonth;
+
+                    leftPercent = startMonth * monthWidth + startFrac * monthWidth;
+                    const fullMonthsBetween = Math.max(0, endMonth - startMonth - 1);
+                    widthPercent = (1 - startFrac) * monthWidth + fullMonthsBetween * monthWidth + endFrac * monthWidth;
+                }
+
+                return {
+                    left: `${Math.max(0, leftPercent)}%`,
+                    width: `${Math.max(2, Math.min(100 - leftPercent, widthPercent))}%`
+                };
+            }
+        }
+
+        function editAbsence(id) {
+            const absence = absences.find(a => a.id === id);
+            if (!absence) return;
+
+            editingId = id;
+            currentAbsenceType = absence.type;
+            
+            const typeSelectGroup = document.getElementById('type-select-group');
+            const absenceTypeSelect = document.getElementById('absence-type');
+            
+            document.getElementById('employee').value = absence.employee;
+            document.getElementById('start-date').value = absence.startDate;
+            document.getElementById('end-date').value = absence.endDate;
+            document.getElementById('comment').value = absence.comment || '';
+            
+            typeSelectGroup.style.display = 'block';
+            absenceTypeSelect.value = absence.type;
+            
+            document.getElementById('modal-title').textContent = '✏️ Редактировать отсутствие';
+            document.getElementById('modal').style.display = 'block';
+        }
+
+        function updateStats() {
+            const totalAbsences = absences.length;
+            const currentDate = new Date();
+            const currentAbsences = absences.filter(absence => {
+                const start = new Date(absence.startDate);
+                const end = new Date(absence.endDate);
+                return currentDate >= start && currentDate <= end;
+            }).length;
+
+            const upcomingAbsences = absences.filter(absence => {
+                const start = new Date(absence.startDate);
+                const futureDate = new Date();
+                futureDate.setDate(futureDate.getDate() + 30);
+                return start > currentDate && start <= futureDate;
+            }).length;
+
+            const totalEl = document.getElementById('total-absences');
+            const currentEl = document.getElementById('current-absences');
+            const upcomingEl = document.getElementById('upcoming-absences');
+            if (totalEl && currentEl && upcomingEl) {
+                totalEl.textContent = totalAbsences;
+                currentEl.textContent = currentAbsences;
+                upcomingEl.textContent = upcomingAbsences;
+            }
+        }
+
+        function updateUpcomingAbsences() {
+            const container = document.getElementById('upcoming-list');
+            container.innerHTML = '';
+            
+            const currentDate = new Date();
+            const futureDate = new Date();
+            futureDate.setDate(futureDate.getDate() + 30);
+            
+            const upcoming = absences.filter(absence => {
+                const start = new Date(absence.startDate);
+                return start > currentDate && start <= futureDate;
+            }).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+            
+            upcoming.forEach(absence => {
+                const item = document.createElement('div');
+                item.className = `upcoming-item ${absence.type}`;
+                item.innerHTML = `
+                    <strong>${absence.employee}</strong> - ${getTypeName(absence.type)}<br>
+                    <small>${absence.startDate} - ${absence.endDate}</small>
+                    ${absence.comment ? `<br><small>💬 ${absence.comment}</small>` : ''}
+                `;
+                container.appendChild(item);
+            });
+            
+            if (upcoming.length === 0) {
+                container.innerHTML = '<p style="color: #666; text-align: center;">Нет предстоящих отсутствий</p>';
+            }
+        }
+
+        function addDemoData() {
+            const demoAbsences = [
+                {
+                    id: 1,
+                    employee: 'Глушков Александр',
+                    startDate: '2025-09-08',
+                    endDate: '2025-09-26',
+                    type: 'vacation',
+                    comment: 'Основной отпуск'
+                },
+                {
+                    id: 2,
+                    employee: 'Шайхутдинов Ринат',
+                    startDate: '2025-09-08',
+                    endDate: '2025-09-19',
+                    type: 'vacation',
+                    comment: 'Основной отпуск'
+                }
+            ];
+            
+            absences = demoAbsences;
+            renderAbsences();
+            updateStats();
+            updateUpcomingAbsences();
+        }
+
+        // Закрытие модального окна при клике вне его
+        window.onclick = function(event) {
+            const modal = document.getElementById('modal');
+            const deleteModal = document.getElementById('delete-modal');
+            const addEmployeeModal = document.getElementById('add-employee-modal');
+            if (event.target === modal) {
+                closeModal();
+            }
+            if (event.target === deleteModal) {
+                closeDeleteModal();
+            }
+            if (event.target === addEmployeeModal) {
+                closeAddEmployeeModal();
+            }
+        }
+
+        // Google Sheets конфигурация
+        const GOOGLE_SHEETS_CONFIG = {
+            spreadsheetId: '1RIHLTF5UnmfHxBGLC1pM5q7xJ0EfhLe_85wV6lPXnwY',
+            range: 'График отпусков!A1:F1000',
+            apiKey: 'AIzaSyAauxIMg0cRKY30peWUY1H4Zip-Y2dFmd4',
+            clientId: '18175449068-esm1ijhtr23gcdhvjog77bkq227ehab2.apps.googleusercontent.com'
+        };
+
+        let gapiInitialized = false;
+        let tokenClient = null;
+
+        // Инициализация Google API
+        function initializeGoogleAPI() {
+            console.log('Инициализация Google API...');
+            
+            gapi.load('client', () => {
+                gapi.client.init({
+                    apiKey: GOOGLE_SHEETS_CONFIG.apiKey,
+                    discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
+                }).then(() => {
+                    console.log('Google API инициализирован');
+                    gapiInitialized = true;
+                    
+                    // Инициализация Google Identity Services
+                    tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: GOOGLE_SHEETS_CONFIG.clientId,
+                        scope: 'https://www.googleapis.com/auth/spreadsheets',
+                        callback: (response) => {
+                            console.log('GIS token callback:', response);
+                            if (response.access_token) {
+                                gapi.client.setToken(response);
+                                updateUIAuthState(true);
+                                loadDataFromSheets();
+                            }
+                        }
+                    });
+                }).catch(error => {
+                    console.error('Ошибка инициализации Google API:', error);
+                    updateSyncStatus('❌ Ошибка инициализации Google API', 'error');
+                });
+            });
+        }
+
+        // Авторизация с Google
+        function authenticateWithGoogle() {
+            if (!gapiInitialized) {
+                alert('Google API не загружен. Попробуйте обновить страницу.');
+                return;
+            }
+            
+            console.log('Запрос авторизации...');
+            tokenClient.requestAccessToken();
+        }
+
+        // Загрузка данных из Google Sheets
+        function loadDataFromSheets() {
+            if (!gapiInitialized || !gapi.client.getToken()) {
+                console.log('Google API не готов или нет токена');
+                updateSyncStatus('❌ Google API не готов', 'error');
+                return;
+            }
+
+            console.log('Загрузка данных из Google Sheets...');
+            updateSyncStatus('🔄 Загрузка данных...', 'info');
+            
+            gapi.client.sheets.spreadsheets.values.get({
+                spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+                range: GOOGLE_SHEETS_CONFIG.range
+            }).then(response => {
+                console.log('Данные получены из Sheets:', response.result);
+                
+                const values = response.result.values;
+                if (values && values.length > 1) {
+                    absences = [];
+                    for (let i = 1; i < values.length; i++) {
+                        const row = values[i];
+                        if (row.length >= 5) {
+                            absences.push({
+                                id: parseInt(row[0]) || Date.now() + i,
+                                employee: row[1],
+                                startDate: row[3], // Дата_начала в колонке D
+                                endDate: row[4],   // Дата_окончания в колонке E
+                                type: row[2],      // Тип в колонке C
+                                comment: row[5] || ''
+                            });
+                        }
+                    }
+                    
+                    console.log('Обработано отсутствий:', absences.length);
+                    
+                    updateEmployeeSelects();
+                    updateEmployeesContainer();
+                    updateTimelineHeader();
+                    updateTimelines();
+                    renderAbsences();
+                    updateStats();
+                    updateUpcomingAbsences();
+                    updateSyncStatus('✅ Данные загружены из Google Sheets', 'success');
+                } else {
+                    console.log('Нет данных в Google Sheets');
+                    updateSyncStatus('📄 Таблица пуста', 'info');
+                }
+            }).catch(error => {
+                console.error('Ошибка загрузки данных:', error);
+                updateSyncStatus('❌ Ошибка загрузки данных: ' + error.message, 'error');
+            });
+        }
+
+        // Сохранение данных в Google Sheets
+        function saveDataToSheets() {
+            if (!gapiInitialized || !gapi.client.getToken()) {
+                console.log('Google API не готов или нет токена');
+                return;
+            }
+
+            console.log('Сохранение данных в Google Sheets...');
+            
+            const values = [
+                ['ID', 'Сотрудник', 'Тип', 'Дата_начала', 'Дата_окончания', 'Комментарий']
+            ];
+            
+            absences.forEach(absence => {
+                values.push([
+                    absence.id,
+                    absence.employee,
+                    absence.type,
+                    absence.startDate,
+                    absence.endDate,
+                    absence.comment || ''
+                ]);
+            });
+
+            gapi.client.sheets.spreadsheets.values.update({
+                spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+                range: GOOGLE_SHEETS_CONFIG.range,
+                valueInputOption: 'RAW',
+                resource: { values: values }
+            }).then(response => {
+                console.log('Данные сохранены в Google Sheets');
+                updateSyncStatus('✅ Данные сохранены в Google Sheets', 'success');
+            }).catch(error => {
+                console.error('Ошибка сохранения данных:', error);
+                updateSyncStatus('❌ Ошибка сохранения данных', 'error');
+            });
+        }
+
+        // Синхронизация с Google Sheets
+        function syncWithSheets() {
+            if (!gapiInitialized || !gapi.client.getToken()) {
+                authenticateWithGoogle();
+                return;
+            }
+            
+            saveDataToSheets();
+        }
+
+        // Обновление статуса синхронизации
+        function updateSyncStatus(message, type) {
+            const statusElement = document.getElementById('sync-status');
+            if (statusElement) {
+                statusElement.textContent = message;
+                statusElement.style.background = type === 'success' ? '#d4edda' : 
+                                               type === 'error' ? '#f8d7da' : '#fff3cd';
+                statusElement.style.borderColor = type === 'success' ? '#c3e6cb' : 
+                                                  type === 'error' ? '#f5c6cb' : '#ffeaa7';
+            }
+        }
+
+        // Обновление UI состояния авторизации
+        function updateUIAuthState(isAuthenticated) {
+            const authButton = document.querySelector('button[onclick="authenticateWithGoogle()"]');
+            if (authButton) {
+                if (isAuthenticated) {
+                    authButton.textContent = '✅ Авторизован';
+                    authButton.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                } else {
+                    authButton.textContent = '🔐 Авторизация Google';
+                    authButton.style.background = 'linear-gradient(135deg, #28a745, #20c997)';
+                }
+            }
+        }
+
+        // Функция загрузки данных для публичного доступа
+        function loadDataFromSheetsPublic() {
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_SHEETS_CONFIG.spreadsheetId}/values/${GOOGLE_SHEETS_CONFIG.range}?key=${GOOGLE_SHEETS_CONFIG.apiKey}`;
+            
+            console.log('Загружаем данные из Google Sheets...', url);
+            
+            fetch(url)
+                .then(response => {
+                    console.log('Ответ от Google Sheets:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Данные получены из Sheets:', data);
+                    
+                    const values = data.values;
+                    if (values && values.length > 1) {
+                        absences = [];
+                        for (let i = 1; i < values.length; i++) {
+                            const row = values[i];
+                            if (row.length >= 5) {
+                                absences.push({
+                                    id: parseInt(row[0]) || Date.now() + i,
+                                    employee: row[1],
+                                    startDate: row[3], // Дата_начала в колонке D
+                                    endDate: row[4],   // Дата_окончания в колонке E
+                                    type: row[2],      // Тип в колонке C
+                                    comment: row[5] || ''
+                                });
+                            }
+                        }
+                        
+                        console.log('Обработано отсутствий:', absences.length);
+                        
+                        updateEmployeeSelects();
+                        updateEmployeesContainer();
+                        updateTimelineHeader();
+                        updateTimelines();
+                        renderAbsences();
+                        updateStats();
+                        updateUpcomingAbsences();
+                    } else {
+                        console.log('Нет данных в Google Sheets');
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки данных:', error);
+                    // Fallback на демо-данные для тестирования
+                    console.log('Используем демо-данные для тестирования');
+                    addDemoData();
+                    updateEmployeeSelects();
+                    updateEmployeesContainer();
+                    updateTimelineHeader();
+                    updateTimelines();
+                    renderAbsences();
+                    updateStats();
+                    updateUpcomingAbsences();
+                });
+        }
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            // Загружаем данные из Google Sheets без авторизации (публичный доступ)
+            loadDataFromSheetsPublic();
+            
+            // Добавляем демо-данные для тестирования, если нет данных
+            setTimeout(() => {
+                if (absences.length === 0) {
+                    console.log('Нет данных, добавляем демо-данные...');
+                    addDemoData();
+                    updateEmployeeSelects();
+                    updateEmployeesContainer();
+                    updateTimelineHeader();
+                    updateTimelines();
+                    renderAbsences();
+                    updateStats();
+                    updateUpcomingAbsences();
+                }
+            }, 2000);
+            
+            updateEmployeeSelects();
+            updateEmployeesContainer();
+            updateTimelineHeader();
+            updateTimelines();
+            renderAbsences();
+            updateStats();
+            updateUpcomingAbsences();
+            // Показ навигации по месяцам в режиме по дням
+            if (currentView === 'days') {
+                const monthNav = document.getElementById('month-navigation');
+                if (monthNav) {
+                    monthNav.style.display = 'block';
+                    updateMonthNavigation();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
